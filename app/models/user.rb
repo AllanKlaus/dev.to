@@ -1,5 +1,8 @@
+# frozen_string_literal: true
+
 class User < ApplicationRecord
   include CloudinaryHelper
+  include Users::Relations
 
   attr_accessor(
     :scholar_email, :new_note, :note_for_current_role, :user_status, :pro, :merge_user_id,
@@ -10,46 +13,22 @@ class User < ApplicationRecord
   include AlgoliaSearch
   include Storext.model
 
+  REGEX = {
+    color_hex: /\A#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})\z/,
+    username: /\A[a-zA-Z0-9_]+\Z/,
+    facebook: /\A(http(s)?:\/\/)?(?:www.)?facebook.com\/.*\Z/,
+    stackoverflow: /\A(http(s)?:\/\/)?(((www|pt|ru|es|ja).)?stackoverflow.com|(www.)?stackexchange.com)\/.*\Z/,
+    behance: /\A(http(s)?:\/\/)?(?:www.)?behance.net\/.*\Z/,
+    linkedin: /\A(http(s)?:\/\/)?((?:www.)?linkedin.com|[A-Za-z]{2}.linkedin.com)\/.*\Z/,
+    dribbble: /\A(http(s)?:\/\/)?(?:www.)?dribbble.com\/.*\Z/,
+    medium: /\A(http(s)?:\/\/)?(?:www.)?medium.com\/.*\Z/,
+    gitlab: /\A(http(s)?:\/\/)?(?:www.)?gitlab.com\/.*\Z/,
+    instagram: /\A(http(s)?:\/\/)?(?:www.)?instagram.com\/(?=.{1,30}\/?$)([a-zA-Z\d_]\.?)*[a-zA-Z\d_]+\/?\Z/,
+    twitch: /\A(http(s)?:\/\/)?(?:www.)?twitch.tv\/.*\Z/
+  }.freeze
+
   acts_as_followable
   acts_as_follower
-
-  has_many :organization_memberships, dependent: :destroy
-  has_many :organizations, through: :organization_memberships
-  has_many :api_secrets, dependent: :destroy
-  has_many :articles, dependent: :destroy
-  has_many :badge_achievements, dependent: :destroy
-  has_many :badges, through: :badge_achievements
-  has_many :collections, dependent: :destroy
-  has_many :comments, dependent: :destroy
-  has_many :email_messages, class_name: "Ahoy::Message"
-  has_many :github_repos, dependent: :destroy
-  has_many :identities, dependent: :destroy
-  has_many :mentions, dependent: :destroy
-  has_many :messages, dependent: :destroy
-  has_many :notes, as: :noteable, inverse_of: :noteable
-  has_many :profile_pins, as: :profile, inverse_of: :profile
-  has_many :authored_notes, as: :author, inverse_of: :author, class_name: "Note"
-  has_many :notifications, dependent: :destroy
-  has_many :reactions, dependent: :destroy
-  has_many :tweets, dependent: :destroy
-  has_many :chat_channel_memberships, dependent: :destroy
-  has_many :chat_channels, through: :chat_channel_memberships
-  has_many :notification_subscriptions, dependent: :destroy
-  has_many :push_notification_subscriptions, dependent: :destroy
-  has_many :feedback_messages
-  has_many :rating_votes
-  has_many :html_variants, dependent: :destroy
-  has_many :page_views
-  has_many :credits
-  has_many :classified_listings
-  has_many :poll_votes
-  has_many :poll_skips
-  has_many :backup_data, foreign_key: "instance_user_id", inverse_of: :instance_user, class_name: "BackupData"
-  has_many :display_ad_events
-  has_many :access_grants, class_name: "Doorkeeper::AccessGrant", foreign_key: :resource_owner_id, inverse_of: :resource_owner, dependent: :delete_all
-  has_many :access_tokens, class_name: "Doorkeeper::AccessToken", foreign_key: :resource_owner_id, inverse_of: :resource_owner, dependent: :delete_all
-  has_many :webhook_endpoints, class_name: "Webhook::Endpoint", foreign_key: :user_id, inverse_of: :user, dependent: :delete_all
-  has_one :pro_membership, dependent: :destroy
 
   mount_uploader :profile_image, ProfileImageUploader
 
@@ -63,46 +42,26 @@ class User < ApplicationRecord
   validates :name, length: { minimum: 1, maximum: 100 }
   validates :username,
             presence: true,
-            format: { with: /\A[a-zA-Z0-9_]+\Z/ },
+            format: { with: REGEX[:username] },
             length: { in: 2..30 },
             exclusion: { in: ReservedWords.all, message: "username is reserved" }
   validates :username, uniqueness: { case_sensitive: false }, if: :username_changed?
   validates :twitter_username, uniqueness: { allow_nil: true }, if: :twitter_username_changed?
   validates :github_username, uniqueness: { allow_nil: true }, if: :github_username_changed?
   validates :experience_level, numericality: { less_than_or_equal_to: 10 }, allow_blank: true
-  validates :text_color_hex, format: /\A#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})\z/, allow_blank: true
-  validates :bg_color_hex, format: /\A#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})\z/, allow_blank: true
+  validates :text_color_hex, format: REGEX[:color_hex], allow_blank: true
+  validates :bg_color_hex, format: REGEX[:color_hex], allow_blank: true
   validates :website_url, :employer_url, :mastodon_url,
             url: { allow_blank: true, no_local: true, schemes: %w[https http] }
-  validates :facebook_url,
-            format: /\A(http(s)?:\/\/)?(www.facebook.com|facebook.com)\/.*\Z/,
-            allow_blank: true
-  validates :stackoverflow_url,
-            allow_blank: true,
-            format:
-            /\A(http(s)?:\/\/)?(((www|pt|ru|es|ja).)?stackoverflow.com|(www.)?stackexchange.com)\/.*\Z/
-  validates :behance_url,
-            allow_blank: true,
-            format: /\A(http(s)?:\/\/)?(www.behance.net|behance.net)\/.*\Z/
-  validates :linkedin_url,
-            allow_blank: true,
-            format:
-              /\A(http(s)?:\/\/)?(www.linkedin.com|linkedin.com|[A-Za-z]{2}.linkedin.com)\/.*\Z/
-  validates :dribbble_url,
-            allow_blank: true,
-            format: /\A(http(s)?:\/\/)?(www.dribbble.com|dribbble.com)\/.*\Z/
-  validates :medium_url,
-            allow_blank: true,
-            format: /\A(http(s)?:\/\/)?(www.medium.com|medium.com)\/.*\Z/
-  validates :gitlab_url,
-            allow_blank: true,
-            format: /\A(http(s)?:\/\/)?(www.gitlab.com|gitlab.com)\/.*\Z/
-  validates :instagram_url,
-            allow_blank: true,
-            format: /\A(http(s)?:\/\/)?(?:www.)?instagram.com\/(?=.{1,30}\/?$)([a-zA-Z\d_]\.?)*[a-zA-Z\d_]+\/?\Z/
-  validates :twitch_url,
-            allow_blank: true,
-            format: /\A(http(s)?:\/\/)?(www.twitch.tv|twitch.tv)\/.*\Z/
+  validates :facebook_url, format: REGEX[:facebook], allow_blank: true
+  validates :stackoverflow_url, allow_blank: true, format: REGEX[:stackoverflow]
+  validates :behance_url, allow_blank: true, format: REGEX[:behance]
+  validates :linkedin_url, allow_blank: true, format: REGEX[:linkedin]
+  validates :dribbble_url, allow_blank: true, format: REGEX[:dribbble]
+  validates :medium_url, allow_blank: true, format: REGEX[:medium]
+  validates :gitlab_url, allow_blank: true, format: REGEX[:gitlab]
+  validates :instagram_url, allow_blank: true, format: REGEX[:instagram]
+  validates :twitch_url, allow_blank: true, format: REGEX[:twitch]
   validates :shirt_gender,
             inclusion: { in: %w[unisex womens],
                          message: "%{value} is not a valid shirt style" },
